@@ -37,8 +37,9 @@ func init() {
 	const providerName = "TENCENTDNS"
 	const providerMaintainer = "@cylonchau"
 	fns := providers.DspFuncs{
-		Initializer:   newTencentDNSDsp,
-		RecordAuditor: AuditRecords,
+		Initializer:    newTencentDNSDsp,
+		RecordAuditor:  AuditRecords,
+		RecordIdentity: recordMetadataComparable,
 	}
 	providers.RegisterDomainServiceProviderType(providerName, fns, features)
 	providers.RegisterRegistrarType(providerName, newTencentDNSReg)

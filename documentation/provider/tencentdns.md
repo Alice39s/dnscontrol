@@ -100,6 +100,20 @@ D("example.com", REG_TENCENT, DnsProvider(DSP_TENCENT),
 
 Available line names, IDs, and weighted-routing features depend on the domain's DNSPod plan and site. Use the DNSPod `DescribeRecordLineList` API to obtain the valid line values for the domain. Using `tencentdns_line_id` avoids ambiguity and is recommended when managing records across different Tencent Cloud sites.
 
+### Per-line answers for one name
+
+Each line stores its own record, so one name and type may appear once per line. Records that share a target are stored separately, which is how a name returns a different edge per region:
+
+{% code title="dnsconfig.js" %}
+```javascript
+D("example.com", REG_TENCENT, DnsProvider(DSP_TENCENT),
+    CNAME("www", "edge-hkg.example.net.", {tencentdns_line_id: "5=2"}),
+    CNAME("www", "edge-hkg.example.net.", {tencentdns_line_id: "5=5"}),
+    CNAME("www", "edge-lax.example.net.", {tencentdns_line_id: "5=4"})
+);
+```
+{% endcode %}
+
 ### Why use `ALIAS` for DNSPod
 
 DNSPod does not natively support the `ALIAS` record type.
