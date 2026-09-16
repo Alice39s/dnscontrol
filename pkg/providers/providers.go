@@ -7,7 +7,6 @@ import (
 	"log"
 
 	"github.com/DNSControl/dnscontrol/v5/models"
-	"github.com/DNSControl/dnscontrol/v5/pkg/diff2"
 )
 
 // Registrar is an interface for a domain registrar. It can return a list of needed corrections to be applied in the future. Implement this only if the provider is a "registrar" (i.e. can update the NS records of the parent to a domain).
@@ -51,12 +50,13 @@ type DspInitializerWithOptions func(map[string]string, json.RawMessage, CreateOp
 // detailing records that this provider can not support.
 type RecordAuditor func(models.Records) []error
 
-// RecordIdentityFunc returns a function that produces additional identity
-// text for a record: text that distinguishes two records which have the same
-// label, rType and RDATA but are stored by the provider as separate objects
-// (e.g. DNSPod record lines, Route 53 routing policies). It is used by the
-// diff engine and by validation-time duplicate detection.
-type RecordIdentityFunc func(models.Records) diff2.ComparableFunc
+// RecordIdentityFunc returns the identity text of a record: text that
+// distinguishes two records which share a label, rType and RDATA but are stored
+// by the provider as separate objects (DNSPod record lines, Route 53 routing
+// policies). Validation uses it for duplicate detection, and validation runs
+// before the provider has read the zone, so the function must depend only on
+// the record it is given.
+type RecordIdentityFunc func(*models.RecordConfig) string
 
 // DspFuncs lists functions registered with a provider.
 type DspFuncs struct {

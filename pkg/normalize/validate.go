@@ -652,7 +652,7 @@ func domainRecordIdentity(d *models.DomainConfig) func(*models.RecordConfig) str
 			continue
 		}
 		if f := providers.GetRecordIdentity(provider.ProviderType); f != nil {
-			return f(d.Records)
+			return f
 		}
 	}
 	return nil
