@@ -105,3 +105,34 @@ func TestTwoCNAMEsOnOneLineRemainAnError(t *testing.T) {
 		t.Fatalf("unexpected first error: %v", errs[0])
 	}
 }
+
+func TestWeightDoesNotSplitTheIdentity(t *testing.T) {
+	dc := lineDomain("TENCENTDNS")
+	for _, weight := range []string{"10", "20"} {
+		r := dc.MustNewRecordConfig("weighted.sgs", 60, dnsv2.TypeA, "203.0.113.10")
+		r.Metadata["tencentdns_line_id"] = "5=2"
+		r.Metadata["tencentdns_weight"] = weight
+		dc.AddRecordConfig(r)
+	}
+
+	errs := validateDomain(t, dc)
+	if len(errs) == 0 {
+		t.Fatal("expected duplicate detection: the service keys records without weight")
+	}
+	if !strings.Contains(errs[0].Error(), "exact duplicate record found") {
+		t.Fatalf("unexpected first error: %v", errs[0])
+	}
+}
+
+func TestLineNamesAloneAlsoCarryIdentity(t *testing.T) {
+	dc := lineDomain("TENCENTDNS")
+	for _, line := range []string{"电信", "联通"} {
+		r := dc.MustNewRecordConfig("named.sgs", 60, dnsv2.TypeA, "203.0.113.10")
+		r.Metadata["tencentdns_line"] = line
+		dc.AddRecordConfig(r)
+	}
+
+	if errs := validateDomain(t, dc); len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}

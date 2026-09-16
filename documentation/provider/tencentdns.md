@@ -114,6 +114,8 @@ D("example.com", REG_TENCENT, DnsProvider(DSP_TENCENT),
 ```
 {% endcode %}
 
+Duplicate detection compares the key DNSPod itself uses: name, line, type and value. The line ID is preferred, with the line name as a fallback. Use one style per line, because `tencentdns_line: "电信"` and `tencentdns_line_id: "10=1"` describe the same line in two ways, and validation has no zone to match them with.
+
 ### Why use `ALIAS` for DNSPod
 
 DNSPod does not natively support the `ALIAS` record type.
