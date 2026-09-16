@@ -248,16 +248,20 @@ func recordMetadataComparable(existingRecords models.Records) diff2.ComparableFu
 // reads nothing but the record itself: the line ID when set, otherwise the line
 // name. Weight stays out, because it is not part of the key the service uses.
 func recordIdentity(rc *models.RecordConfig) string {
-	if rc.Metadata == nil {
-		return ""
+	if rc.Metadata != nil {
+		if lineID := rc.Metadata[metaRecordLineID]; lineID != "" {
+			return "line_id=" + lineID
+		}
+		if line := rc.Metadata[metaRecordLine]; line != "" {
+			// The default line has one name and one ID.
+			if line == defaultRecordLine {
+				return "line_id=" + defaultRecordLineID
+			}
+			return "line=" + line
+		}
 	}
-	if lineID := rc.Metadata[metaRecordLineID]; lineID != "" {
-		return "line_id=" + lineID
-	}
-	if line := rc.Metadata[metaRecordLine]; line != "" {
-		return "line=" + line
-	}
-	return ""
+	// A record without line metadata answers on the default line.
+	return "line_id=" + defaultRecordLineID
 }
 
 func (p *tencentdnsProvider) GetZoneRecordsCorrections(dc *models.DomainConfig, existingRecords models.Records) ([]*models.Correction, int, error) {

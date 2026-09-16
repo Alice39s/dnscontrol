@@ -7,24 +7,29 @@ import (
 	dnsv2 "codeberg.org/miekg/dns"
 
 	"github.com/DNSControl/dnscontrol/v5/models"
+	"github.com/DNSControl/dnscontrol/v5/pkg/providers"
 	_ "github.com/DNSControl/dnscontrol/v5/providers/tencentdns"
 )
 
-const lineZone = "smart-cluster.hats-saas.top"
+const lineZone = "example.com"
 
-// Per-line answers for one name: four lines point at the same target.
+// A provider that stores one record per line and declares no identity function
+// keeps the duplicate rules that existed before the hook.
+const plainProviderType = "TEST_NO_IDENTITY"
+
+func init() {
+	providers.RegisterDomainServiceProviderType(plainProviderType, providers.DspFuncs{}, providers.DocumentationNotes{})
+}
+
+// Four lines answer one name: two share a target, two point elsewhere.
 var lineRoutes = []struct {
 	line   string
 	target string
 }{
-	{"0", "edge-hkg.sgs.smart-cluster.hats-saas.top."},
-	{"7=0", "edge-hkg.sgs.smart-cluster.hats-saas.top."},
-	{"5=2", "edge-hkg.sgs.smart-cluster.hats-saas.top."},
-	{"5=5", "edge-hkg.sgs.smart-cluster.hats-saas.top."},
-	{"5=4", "edge-lax.sgs.smart-cluster.hats-saas.top."},
-	{"5=6", "edge-lax.sgs.smart-cluster.hats-saas.top."},
-	{"5=3", "edge-lon.sgs.smart-cluster.hats-saas.top."},
-	{"5=0", "edge-lon.sgs.smart-cluster.hats-saas.top."},
+	{"0", "origin.example.net."},
+	{"10=1", "origin.example.net."},
+	{"10=3", "backup.example.net."},
+	{"10=2", "backup.example.net."},
 }
 
 func lineDomain(providerType string) *models.DomainConfig {
@@ -40,7 +45,7 @@ func lineDomain(providerType string) *models.DomainConfig {
 
 func addLineRecords(dc *models.DomainConfig, rType uint16, target string) {
 	for _, route := range lineRoutes {
-		r := dc.MustNewRecordConfig("*.sgs", 60, rType, target)
+		r := dc.MustNewRecordConfig("edge", 60, rType, target)
 		r.Metadata["tencentdns_line_id"] = route.line
 		dc.AddRecordConfig(r)
 	}
@@ -56,7 +61,7 @@ func validateDomain(t *testing.T, dc *models.DomainConfig) []error {
 func TestPerLineCNAMEsShareOneName(t *testing.T) {
 	dc := lineDomain("TENCENTDNS")
 	for _, route := range lineRoutes {
-		r := dc.MustNewRecordConfig("*.sgs", 60, dnsv2.TypeCNAME, route.target)
+		r := dc.MustNewRecordConfig("edge", 60, dnsv2.TypeCNAME, route.target)
 		r.Metadata["tencentdns_line_id"] = route.line
 		dc.AddRecordConfig(r)
 	}
@@ -68,7 +73,7 @@ func TestPerLineCNAMEsShareOneName(t *testing.T) {
 
 func TestPerLineAddressesMayShareOneTarget(t *testing.T) {
 	dc := lineDomain("TENCENTDNS")
-	addLineRecords(dc, dnsv2.TypeA, "109.105.193.70")
+	addLineRecords(dc, dnsv2.TypeA, "192.0.2.10")
 
 	if errs := validateDomain(t, dc); len(errs) != 0 {
 		t.Fatalf("expected no validation errors, got %v", errs)
@@ -76,8 +81,14 @@ func TestPerLineAddressesMayShareOneTarget(t *testing.T) {
 }
 
 func TestPerLineRecordsStillFailWithoutProviderIdentity(t *testing.T) {
-	dc := lineDomain("ROUTE53")
-	addLineRecords(dc, dnsv2.TypeA, "109.105.193.70")
+	if _, ok := providers.DNSProviderTypes[plainProviderType]; !ok {
+		t.Fatalf("test setup: %s is not registered", plainProviderType)
+	}
+	if providers.GetRecordIdentity(plainProviderType) != nil {
+		t.Fatalf("test setup: %s declares an identity function", plainProviderType)
+	}
+	dc := lineDomain(plainProviderType)
+	addLineRecords(dc, dnsv2.TypeA, "192.0.2.10")
 
 	errs := validateDomain(t, dc)
 	if len(errs) == 0 {
@@ -90,10 +101,10 @@ func TestPerLineRecordsStillFailWithoutProviderIdentity(t *testing.T) {
 
 func TestTwoCNAMEsOnOneLineRemainAnError(t *testing.T) {
 	dc := lineDomain("TENCENTDNS")
-	first := dc.MustNewRecordConfig("*.sgs", 60, dnsv2.TypeCNAME, lineRoutes[0].target)
+	first := dc.MustNewRecordConfig("edge", 60, dnsv2.TypeCNAME, lineRoutes[0].target)
 	first.Metadata["tencentdns_line_id"] = lineRoutes[0].line
 	dc.AddRecordConfig(first)
-	second := dc.MustNewRecordConfig("*.sgs", 60, dnsv2.TypeCNAME, "other.example.net.")
+	second := dc.MustNewRecordConfig("edge", 60, dnsv2.TypeCNAME, "other.example.net.")
 	second.Metadata["tencentdns_line_id"] = lineRoutes[0].line
 	dc.AddRecordConfig(second)
 
@@ -109,8 +120,8 @@ func TestTwoCNAMEsOnOneLineRemainAnError(t *testing.T) {
 func TestWeightDoesNotSplitTheIdentity(t *testing.T) {
 	dc := lineDomain("TENCENTDNS")
 	for _, weight := range []string{"10", "20"} {
-		r := dc.MustNewRecordConfig("weighted.sgs", 60, dnsv2.TypeA, "203.0.113.10")
-		r.Metadata["tencentdns_line_id"] = "5=2"
+		r := dc.MustNewRecordConfig("weighted", 60, dnsv2.TypeA, "203.0.113.10")
+		r.Metadata["tencentdns_line_id"] = "10=1"
 		r.Metadata["tencentdns_weight"] = weight
 		dc.AddRecordConfig(r)
 	}
@@ -127,10 +138,59 @@ func TestWeightDoesNotSplitTheIdentity(t *testing.T) {
 func TestLineNamesAloneAlsoCarryIdentity(t *testing.T) {
 	dc := lineDomain("TENCENTDNS")
 	for _, line := range []string{"电信", "联通"} {
-		r := dc.MustNewRecordConfig("named.sgs", 60, dnsv2.TypeA, "203.0.113.10")
+		r := dc.MustNewRecordConfig("named", 60, dnsv2.TypeA, "203.0.113.10")
 		r.Metadata["tencentdns_line"] = line
 		dc.AddRecordConfig(r)
 	}
+
+	if errs := validateDomain(t, dc); len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}
+
+// A record without line metadata answers on the default line, so it is the same
+// record as one that names the default line explicitly.
+func TestDefaultLineMatchesAnExplicitDefaultLine(t *testing.T) {
+	dc := lineDomain("TENCENTDNS")
+	dc.AddRecordConfig(dc.MustNewRecordConfig("default-host", 60, dnsv2.TypeA, "192.0.2.10"))
+	explicit := dc.MustNewRecordConfig("default-host", 60, dnsv2.TypeA, "192.0.2.10")
+	explicit.Metadata["tencentdns_line_id"] = "0"
+	dc.AddRecordConfig(explicit)
+
+	errs := validateDomain(t, dc)
+	if len(errs) == 0 {
+		t.Fatal("expected duplicate detection: no line means the default line")
+	}
+	if !strings.Contains(errs[0].Error(), "exact duplicate record found") {
+		t.Fatalf("unexpected first error: %v", errs[0])
+	}
+}
+
+// The default line has both a name and an ID, and both describe one record.
+func TestDefaultLineNameMatchesTheDefaultLineID(t *testing.T) {
+	dc := lineDomain("TENCENTDNS")
+	dc.AddRecordConfig(dc.MustNewRecordConfig("default-name", 60, dnsv2.TypeA, "192.0.2.10"))
+	named := dc.MustNewRecordConfig("default-name", 60, dnsv2.TypeA, "192.0.2.10")
+	named.Metadata["tencentdns_line"] = "默认"
+	dc.AddRecordConfig(named)
+
+	errs := validateDomain(t, dc)
+	if len(errs) == 0 {
+		t.Fatal("expected duplicate detection: the default line has one name and one ID")
+	}
+}
+
+// Validation runs before the provider reads the zone, so it cannot resolve a
+// line name into a line ID. A configuration that describes one line in both
+// styles passes here, and the service rejects the duplicate at push time.
+func TestMixedLineStylesPassValidation(t *testing.T) {
+	dc := lineDomain("TENCENTDNS")
+	byName := dc.MustNewRecordConfig("mixed", 60, dnsv2.TypeA, "192.0.2.10")
+	byName.Metadata["tencentdns_line"] = "电信"
+	dc.AddRecordConfig(byName)
+	byID := dc.MustNewRecordConfig("mixed", 60, dnsv2.TypeA, "192.0.2.10")
+	byID.Metadata["tencentdns_line_id"] = "10=1"
+	dc.AddRecordConfig(byID)
 
 	if errs := validateDomain(t, dc); len(errs) != 0 {
 		t.Fatalf("expected no validation errors, got %v", errs)

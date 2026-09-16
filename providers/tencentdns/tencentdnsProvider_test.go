@@ -325,18 +325,19 @@ func makeLineRecord(domain, target string, metadata map[string]string) *models.R
 	return rc
 }
 
-// The validation identity must read nothing but the record it is given, and it
-// must leave weight out: the service keys records on name, line, type and value.
+// The validation identity must read nothing but the record it is given. A
+// record without line metadata answers on the default line, and weight stays
+// out because the service keys records without it.
 func TestRecordIdentityReadsOnlyTheRecord(t *testing.T) {
-	assert.Equal(t, "", recordIdentity(makeLineRecord("example.com", "1.2.3.4", nil)))
-	assert.Equal(t, "line_id=5=2", recordIdentity(makeLineRecord("example.com", "1.2.3.4",
-		map[string]string{metaRecordLineID: "5=2"})))
+	assert.Equal(t, "line_id=0", recordIdentity(makeLineRecord("example.com", "1.2.3.4", nil)))
+	assert.Equal(t, "line_id=10=1", recordIdentity(makeLineRecord("example.com", "1.2.3.4",
+		map[string]string{metaRecordLineID: "10=1"})))
 	assert.Equal(t, "line=电信", recordIdentity(makeLineRecord("example.com", "1.2.3.4",
 		map[string]string{metaRecordLine: "电信"})))
-	assert.Equal(t, "line_id=5=2", recordIdentity(makeLineRecord("example.com", "1.2.3.4",
-		map[string]string{metaRecordLineID: "5=2", metaRecordWeight: "10"})))
-	assert.Equal(t, "line_id=5=2", recordIdentity(makeLineRecord("example.com", "1.2.3.4",
-		map[string]string{metaRecordLineID: "5=2", metaRecordWeight: "20"})))
+	assert.Equal(t, "line_id=10=1", recordIdentity(makeLineRecord("example.com", "1.2.3.4",
+		map[string]string{metaRecordLineID: "10=1", metaRecordWeight: "10"})))
+	assert.Equal(t, "line_id=10=1", recordIdentity(makeLineRecord("example.com", "1.2.3.4",
+		map[string]string{metaRecordLineID: "10=1", metaRecordWeight: "20"})))
 }
 
 func TestMinTTLForGrade(t *testing.T) {

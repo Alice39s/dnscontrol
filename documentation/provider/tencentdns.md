@@ -102,19 +102,23 @@ Available line names, IDs, and weighted-routing features depend on the domain's 
 
 ### Per-line answers for one name
 
-Each line stores its own record, so one name and type may appear once per line. Records that share a target are stored separately, which is how a name returns a different edge per region:
+Each line stores its own record, so one name and type may appear once per line. Records that share a target are still stored as separate records:
 
 {% code title="dnsconfig.js" %}
 ```javascript
 D("example.com", REG_TENCENT, DnsProvider(DSP_TENCENT),
-    CNAME("www", "edge-hkg.example.net.", {tencentdns_line_id: "5=2"}),
-    CNAME("www", "edge-hkg.example.net.", {tencentdns_line_id: "5=5"}),
-    CNAME("www", "edge-lax.example.net.", {tencentdns_line_id: "5=4"})
+    CNAME("www", "origin.example.net.", {tencentdns_line_id: "10=1"}),
+    CNAME("www", "origin.example.net.", {tencentdns_line_id: "10=3"}),
+    CNAME("www", "origin.example.net.", {tencentdns_line_id: "10=2"})
 );
 ```
 {% endcode %}
 
 Duplicate detection compares the key DNSPod itself uses: name, line, type and value. The line ID is preferred, with the line name as a fallback. Use one style per line, because `tencentdns_line: "电信"` and `tencentdns_line_id: "10=1"` describe the same line in two ways, and validation has no zone to match them with.
+
+A record without line metadata answers on the default line, so it is the same record as one that sets `tencentdns_line_id: "0"` explicitly.
+
+Because validation cannot resolve a line name, a pair that describes one line in both styles passes `check` and is rejected by the service when the change is pushed.
 
 ### Why use `ALIAS` for DNSPod
 
